@@ -11,21 +11,23 @@ namespace Trivia_Swipe
         [Header("UI")]
         [SerializeField] private Slider timer;
         [SerializeField] private GameObject gameOverPanel, mainMenuPanel, gameplayPanel;
-        [SerializeField] private TMPro.TMP_Text scoreTxt;
+        [SerializeField] private TMPro.TMP_Text scoreTxt, answerStatusTxt;
 
         [Header("Script References")]
         [SerializeField] private GameLogic localGameLogic;
 
         private void OnEnable()
         {
-            localGameLogic.OnQuestionAnswered += RestartTimer;
+            localGameLogic.OnNextQuestion += RestartTimer;
             localGameLogic.OnGameOver += ShowGameOverUI;
+            localGameLogic.OnQuestionAnswered += ShowAnswerStatus;
         }
 
         private void OnDisable()
         {
-            localGameLogic.OnQuestionAnswered -= RestartTimer;
+            localGameLogic.OnNextQuestion -= RestartTimer;
             localGameLogic.OnGameOver -= ShowGameOverUI;
+            localGameLogic.OnQuestionAnswered -= ShowAnswerStatus;
         }
 
         // Start is called before the first frame update
@@ -36,16 +38,16 @@ namespace Trivia_Swipe
             //InvokeRepeating(nameof(CountDown), 0f, 1f);
         }
 
+        #region Timer
         private void RestartTimer()
         {
-            StopCoroutine(timerCoroutine);
+            //StopCoroutine(timerCoroutine);
             timer.value = localGameLogic.totalTime;
             timerCoroutine = StartCoroutine(CountDown());
         }
 
         private IEnumerator CountDown()
         {
-            Debug.Log("Beforeb Timer has reached zero");
             float t = 0;
             float totalTime = localGameLogic.totalTime;
 
@@ -57,9 +59,10 @@ namespace Trivia_Swipe
                 yield return null;
             }
 
-            localGameLogic.OnTimerOver?.Invoke();
-            Debug.Log("Timer has reached zero");
+            localGameLogic.OnTimerOver?.Invoke(true);
+            //Debug.Log("Timer has reached zero");
         }
+        #endregion Timer
 
         private void ShowGameOverUI()
         {
@@ -68,6 +71,33 @@ namespace Trivia_Swipe
             scoreTxt.text = localGameLogic.score.ToString() + "/10";
         }
 
+        private void ShowAnswerStatus(bool status)
+        {
+            StopCoroutine(timerCoroutine);
+            CancelInvoke(nameof(AnswerStatusToDefault));            //If the player swipes early
+            AnswerStatusToDefault();
+
+            if (status)
+            {
+                answerStatusTxt.text = "CORRECT";
+                answerStatusTxt.color = Color.green;
+            }
+            else
+            {
+                answerStatusTxt.text = "WRONG";
+                answerStatusTxt.color = Color.red;
+            }
+
+            Invoke(nameof(AnswerStatusToDefault), 1.5f);
+        }
+
+        private void AnswerStatusToDefault()
+        {
+            answerStatusTxt.text = "";
+            answerStatusTxt.color = Color.grey;
+        }
+
+        #region Buttons
         //On the Restart button,under StatsCard/GameOverPanel/GameplayCanvas
         public void RestartGame()
         {
@@ -91,5 +121,6 @@ namespace Trivia_Swipe
             localGameLogic.OnGameStart?.Invoke();
             timerCoroutine = StartCoroutine(CountDown());
         }
+        #endregion Buttons
     }
 }

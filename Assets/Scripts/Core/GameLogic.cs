@@ -11,11 +11,12 @@ namespace Trivia_Swipe
         public byte score;
         public float totalTime;
         private bool gameStarted;
+        [SerializeField] private Transform cameraTransform;
 
         [Header("Touch Controls")]
         [SerializeField] private float minDiff;
         private Vector3 startPoint, touchPoint, offset;     //, endPoint
-        private bool touchedScreen;  //For test Serialized, disableTouch
+        private bool touchedScreen, switchingCards;  //For test Serialized, disableTouch
         //[SerializeField] private Vector3 shrinkSize;      //(3.6f, 5.5f, 1f)
 
         [Header("Card Controls")]
@@ -28,7 +29,8 @@ namespace Trivia_Swipe
         [SerializeField] private bool[] responses;
 
         [Header("Actions")]
-        public Action OnTimerOver, OnQuestionAnswered, OnGameOver, OnGameReset, OnGameStart;
+        public Action OnNextQuestion, OnGameOver, OnGameReset, OnGameStart;
+        public Action<bool> OnTimerOver, OnQuestionAnswered;
 
         private void OnEnable()
         {
@@ -50,6 +52,7 @@ namespace Trivia_Swipe
         {
             cardHolder.SetActive(true);
             Invoke(nameof(turnOnGameStarted), 1f);
+            UpdateQuestionInNextCard();
         }
 
         //To prevent touch input while starting game.
@@ -64,13 +67,18 @@ namespace Trivia_Swipe
             //if (disableTouch)
             //    return;
 
+            if (switchingCards)
+                return;
+
             if (Touch.activeFingers.Count > 0)
             {
                 Touch touch = Touch.activeFingers[0].currentTouch;
                 touchPoint = Camera.main.ScreenToWorldPoint(touch.screenPosition);
+                Vector2 touchPoint2D = new Vector2(touchPoint.x, touchPoint.y);
                 //Debug.Log($"touchPoint : {touchPoint}, position : {touch.screenPosition}");
 
-                RaycastHit2D hit = Physics2D.Raycast(touchPoint, touch.screenPosition, 20f, raycastLayerMask);
+                //RaycastHit2D hit = Physics2D.Raycast(touchPoint2D, touch.screenPosition, 20f, raycastLayerMask);
+                RaycastHit2D hit = Physics2D.Raycast(touchPoint, cameraTransform.forward, 20f, raycastLayerMask);
                 if (hit.collider != null)
                 {
                     if (!touchedScreen)
@@ -98,21 +106,25 @@ namespace Trivia_Swipe
 
                 //Calculate the diff, if greater than set diff, and the player releases their touch
                 //, swipe away the card from screen
-                if (touchedScreen && gameStarted)
+                if (touchedScreen && gameStarted && !switchingCards)
                 {
                     float touchDiff = Vector3.Distance(startPoint, touchPoint);
                     bool leftSwipe = (startPoint.x - touchPoint.x) > 0;
                     if (Mathf.Abs(touchDiff) >= minDiff)
                     {
-                        if (leftSwipe == responses[cardCount] || cardCount == 4)
+                        //Debug.Log($"Swiped, diff : {Vector3.Distance(startPoint, touchPoint)}");
+
+                        if (leftSwipe == responses[cardCount] || cardCount == 4 || cardCount == 9)
+                        {
                             score++;
+                            OnQuestionAnswered?.Invoke(true);
+                        }
+                        else
+                            OnQuestionAnswered?.Invoke(false);
                         cardCount++;
 
                         //disableTouch = true;
-                        if (cardCount < totalCardCount)
-                            UpdateQuestionInNextCard();
                         _ = StartCoroutine(MoveCardAwayScreen(leftSwipe));
-                        //Debug.Log($"Swiped, diff : {Vector3.Distance(startPoint, touchPoint)}");
                     }
                     else
                         cards[currentCard].position = Vector3.zero;
@@ -122,14 +134,19 @@ namespace Trivia_Swipe
         }
 
         #region CardTransformManipulation
-        private void MoveCardIfNoResponse()
+        private void MoveCardIfNoResponse(bool timerOver = false)
         {
+            switchingCards = timerOver;
+            startPoint = Vector3.zero;
+            touchPoint = Vector3.zero;
+            touchedScreen = false;
+
             //Debug.Log("Moving Card No Response");
             cardCount++;
 
             //disableTouch = true;
-            if (cardCount < totalCardCount)
-                UpdateQuestionInNextCard();
+            //if (cardCount < totalCardCount)
+            //    UpdateQuestionInNextCard();
             _ = StartCoroutine(MoveCardAwayScreen(true));
         }
 
@@ -174,7 +191,10 @@ namespace Trivia_Swipe
                 yield return null;
             }
 
-            OnQuestionAnswered?.Invoke();
+            switchingCards = false;
+            OnNextQuestion?.Invoke();
+            if (cardCount < totalCardCount)
+                UpdateQuestionInNextCard();
             //Debug.Log("Finished Moving Front");
         }
 
@@ -190,7 +210,7 @@ namespace Trivia_Swipe
             //Current card should be +1
             byte cardIndex = (currentCard == 0) ? (byte)(currentCard + 1) : (byte)0;
 
-            string question = questions[cardCount];
+            string question = questions[cardCount + 1];
             question = question.Replace("\\n", "\n");               //To get a new line
             cards[cardIndex].GetChild(0).GetChild(0).GetComponent<TMPro.TMP_Text>().text = question;
         }
